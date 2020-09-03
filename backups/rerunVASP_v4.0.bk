@@ -1,0 +1,149 @@
+#!/bin/bash
+
+# Bash3 Boilerplate. Copyright (c) 2014, kvz.io
+
+set -o errexit
+set -o pipefail
+set -o nounset
+
+# End Boilerplate
+
+#TODO:
+#Have master exclude list somewhere to save time? Clear every 6 hours?
+
+run_and_catch_job() {
+	sbatch_output=$(sbatch runVASP.sh)
+	printf "%s\n" "${sbatch_output}"
+	printf "%s" "${sbatch_output#'Submitted batch job '}" > current_job
+}
+
+add_to_crontab() {
+	(crontab -l ; echo "* * * * * cd $(pwd) && rerunVASP") | awk '!x[$0]++' | crontab -
+}
+
+remove_from_crontab() {
+	crontab -l | grep -v "$(pwd)" | crontab -
+}
+
+update_and_run_if_error() {
+	printf 'Checking slurm for errors ... '
+	grep 'rc_verbs_iface.c:69   send completion with error: remote invalid request error' "${slurm_file}" > error_list 2> /dev/null || :	# find lines with error code
+
+	if [[ -s error_list ]] ; then
+		printf "found errors\n"
+		source update_exclude_list
+		run_and_catch_job
+		add_to_crontab 
+	else
+		printf "no errors found\n"
+		source continueVASP
+		printf "Checking if ran out of steps or got stuck ... "
+		if [[ -n "${max_step_line}" ]] ; then
+			printf "ran out of steps\n"
+			move_and_clean_up_files
+			run_and_catch_job
+			add_to_crontab
+		elif [[ -n "${stuck_line}" ]] ; then
+			printf "got stuck\n"
+			move_and_clean_up_files
+			run_and_catch_job
+			add_to_crontab
+		else
+			printf "did not run out of steps or get stuck\n"
+			printf "%s\n" "Job ${job_number} assumed completed"
+			remove_from_crontab
+
+		fi
+	fi
+}
+
+check_if_running() { # Use current_job to check if running. 
+	printf "Checking for job number ... "
+	if [[ -n "${current_job_file}" ]] ; then
+		printf "found job number\n"
+		job_number=$(cat current_job)
+		job_status=$(squeue -u cgerber | grep -q "${job_number}" 2> /dev/null; echo $?)
+	else
+		printf "no job number found\n"
+		job_status="2"
+	fi
+}
+
+check_input_files() {
+	INCAR_file=$(find . -maxdepth 1 -mindepth 1 -type f -name "INCAR")
+	KPOINTS_file=$(find . -maxdepth 1 -mindepth 1 -type f -name "KPOINTS")
+	POSCAR_file=$(find . -maxdepth 1 -mindepth 1 -type f -name "POSCAR")
+	POTCAR_file=$(find . -maxdepth 1 -mindepth 1 -type f -name "POTCAR")
+	runVASP_file=$(find . -maxdepth 1 -mindepth 1 -type f -name "runVASP.sh")
+
+	if [[ -n "${INCAR_file}" ]] && [[ -n "${KPOINTS_file}" ]] && [[ -n "${POSCAR_file}" ]] && [[ -n "${POTCAR_file}" ]] && [[ -n "${runVASP_file}" ]] ; then
+		echo "0"
+	else
+		echo "1"
+	fi
+}
+
+conditional_run() {
+	check_if_running
+	printf "Checking job status ... "
+	if [[ "${job_status}" == 0 ]] ; then
+		printf "%s\n" "Job ${job_number} is already running"
+	elif [[ "${job_status}" == 1 ]] ; then
+		printf "job is inactive\n"
+		update_and_run_if_error
+	elif [[ "${job_status}" == 2 ]] ; then
+		printf "could not check status, no job number found\n"
+		printf "Checking for slurm file ... "
+		if [[ -n "${slurm_file}" ]] ; then
+			printf "%s\n" "found slurm"
+			update_and_run_if_error
+		else
+			printf "%s\n" "no slurm found"
+			printf "Checking for input files ... "
+			if [[ $(check_input_files) == 0 ]] ; then
+				printf "%s\n" "found input files"
+				echo "Running new job in $(basename "$(pwd)")"
+				run_and_catch_job
+				add_to_crontab
+			else
+				printf "%s\n" "no input files found"
+				run_in_folders
+			fi
+		fi
+	fi
+}
+
+find_slurm_and_job() {
+
+	slurm_file=$(find . -maxdepth 1 -mindepth 1 -type f -name "slurm*")	#find slurm file
+	current_job_file=$(find . -maxdepth 1 -mindepth 1 -type f -name "current_job")
+}
+
+run_in_folders() {
+
+	printf "%s\n" "No slurm file found in $(basename "$(pwd)")"
+	folder_list=$(find . -maxdepth 1 -mindepth 1 -type d)
+	if [[ -n "${folder_list}" ]] ; then
+		printf "Checking folders...\n"
+		while IFS="" read -r folder || [ -n "${folder}" ] ; do
+			if [[ ! "${folder}" == *slurm* ]] && [[ ! "${folder}" == *run* ]] ; then
+				cd "${folder}"
+				find_slurm_and_job
+				#if [[ -n "${slurm_file}" ]] ; then conditional_run ; else printf "No slurm file found in $(basename ${folder})\n" ; fi
+				conditional_run
+				cd ../
+			else
+				printf "%s\n" "Skipping folder $(basename "${folder}")"
+			fi
+		done < <(printf '%s\n' "${folder_list}")
+	else
+		printf "No slurm file or folders found"
+	fi
+}
+
+find_slurm_and_job
+
+#echo "Slurm file: ${slurm_file}"
+#echo "Current job file: ${current_job_file}"
+
+conditional_run

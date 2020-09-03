@@ -1,0 +1,187 @@
+#!/bin/bash
+
+# Bash3 Boilerplate. Copyright (c) 2014, kvz.io
+
+set -o errexit
+set -o pipefail
+set -o nounset
+
+# End Boilerplate
+
+#TODO: #Catch batch number, parse, and add to new, maybe in crontabVASP
+#Have master exclude list somewhere in case runvasp not update for one folder
+#Arrange, parse ranges, and change ranges?
+#Check for entry already existing?
+#See if can check for bad nodes at beginning of day, around 3 or 5 AM? Submit short calc's with only one node excluded, etc.
+#Run script to check node list every 20 mins through night?
+
+folder_check() {
+	#check for failed_slurms folder and create if needed
+        if [[ -z $(find -maxdepth 1 -mindepth 1 -name 'failed_slurms') ]] ; then
+                mkdir failed_slurms
+                printf "Made failed_slurms folder\n"
+        else
+            	printf "Found folder\n"
+        fi
+}
+
+parse_error_nodes() {	#substitute each line with the node number in each line, and write node numbers to list
+        error_node_list=$(sed -n 's/.*compute\([0-9][0-9][0-9]\).*/\1/p' error_list | sed '$!N; /^\(.*\)\n\1$/!P; D')
+	#printf "Adding node(s)  to exclude list..."
+        #printf "Adding node(s) $(jq -Rs . <error_node_list) to exclude list..."
+}
+
+get_current_exclude_list() {
+	#reading in exclude line from runVASP.sh
+        excludeString=$(grep '\-\-exclude' runVASP.sh)  #get line with --exclude
+        excludeString=${excludeString#'#SBATCH --exclude=compute['}     #remove front part
+        excludeString=${excludeString%]}        # remove back bracket, leaving numbers or ranges with commas
+        IFS=',' read -r -a nodeArray <<< "${excludeString}"
+}
+
+rebuild_exclude_list() {
+
+	#add nodes from error_node_list to end of nodeArray
+        while IFS= read -r line || [ -n "${line}" ]
+        do
+          	nodeArray+=("${line}")
+        done < <(printf '%s\n' "${error_node_list}")
+
+        IFS=',';new_exclude_line="#SBATCH --exclude=compute[${nodeArray[*]// /|}]"	#convert array to string delimited with "," and add surrounding text
+        sed -i 's/.*--exclude.*/'"${new_exclude_line}"'/' runVASP.sh    #replace exclude line in runVASP.sh with new_exclude_line
+
+}
+
+run_and_catch_job() {
+	sbatch_output=$(sbatch runVASP.sh)
+	printf "${sbatch_output}\n"
+	printf "${sbatch_output#'Submitted batch job '}" > current_job
+}
+
+add_to_crontab() {
+	(crontab -l ; echo "*/5 * * * * cd $(pwd) && rerunVASP") | awk '!x[$0]++' | crontab -
+} 
+
+update_and_run_if_error() {
+
+grep 'rc_verbs_iface.c:69   send completion with error: remote invalid request error' "${slurm_file}" > error_list	#find lines with error code
+
+if [[ ! -z error_list ]] ; then
+	
+	folder_check
+		
+	#COMMENT IN FOR FINAL move slurm file into folder
+	cp "${slurm_file}" failed_slurms
+	rm "${slurm_file}"
+
+	parse_error_nodes
+	get_current_exclude_list
+	rebuild_exclude_list
+
+	run_and_catch_job
+	add_to_crontab
+
+	#min=${nodeArray[0]}
+	#max=${nodeArray[-1]}
+	
+	#insert into array in order and account for ranges
+	#newArray=()
+	#for i in "${nodeArray[@]}"; do
+	#	#echo "${i}"
+	#	#if [[ "${i}" == *-* ]]; then
+	#		#echo "Range found."
+	#	#fi 
+	#done
+else
+	printf "No errors found\n"
+fi
+
+}
+
+
+check_if_running() { # Use current_job to check if running. 
+
+#if [[ ! -z ${1+x} ]] ; then
+#	squeue -u cgerber | grep -q "${1}" 2> /dev/null; echo $?
+#if [[ ! -z ${job_number+x} ]] ; then
+#	squeue -u cgerber | grep -q "${job_number}" 2> /dev/null; echo $?
+
+if [[ -n "${current_job_file}" ]] ; then
+	job_number=$(cat current_job)
+	job_status=$(squeue -u cgerber | grep -q "${job_number}" 2> /dev/null; echo $?)
+else
+	job_status="2"
+fi
+}
+
+conditional_run() {
+
+check_if_running
+
+if [[ "${job_status}" == 0 ]] ; then
+	echo "Job ${job_number} is already running"
+elif [[ "${job_status}" == 1 ]] ; then
+	update_and_run_if_error
+elif [[ "${job_status}" == 2 ]] ; then
+	if [[ -n "${slurm_file}" ]] ; then
+		update_and_run_if_error
+	else
+		if [[ $(check_input_files) == 0 ]] ; then
+			run_and_catch_job
+			add_to_crontab
+		else
+			run_in_folders
+		fi 		
+	fi
+fi
+	
+}
+
+check_input_files() {
+	INCAR_file=$(find -maxdepth 1 -mindepth 1 -type f -name "INCAR")
+	KPOINTS_file=$(find -maxdepth 1 -mindepth 1 -type f -name "KPOINTS")
+	POSCAR_file=$(find -maxdepth 1 -mindepth 1 -type f -name "POSCAR")
+	POTCAR_file=$(find -maxdepth 1 -mindepth 1 -type f -name "POTCAR")
+	runVASP_file=$(find -maxdepth 1 -mindepth 1 -type f -name "runVASP.sh")
+	
+	if [[ -n "${INCAR_file}" && -n "${KPOINTS_file}" && -n "${POSCAR_file}" && -n "${POTCAR_file}" && -n "${runVASP_file}" ]] ; then
+		echo "0"
+	else
+		echo "1"
+	fi
+}
+
+find_slurm_and_job() {
+
+	slurm_file=$(find -maxdepth 1 -mindepth 1 -type f -name "slurm*") 	#find slurm file
+	current_job_file=$(find -maxdepth 1 -mindepth 1 -type f -name "current_job")
+}
+
+run_in_folders() {
+
+        printf "No slurm file found in $(basename $(pwd))\n"
+        folder_list=$(find -maxdepth 1 -mindepth 1 -type d)
+        if [[ -n "${folder_list}" ]] ; then
+                printf "Checking folders...\n"
+                while IFS="" read -r folder || [ -n "${folder}" ] ; do
+                        if [[ ! "${folder}" == *slurm* ]] && [[ ! "${folder}" == *run* ]] ; then
+                                cd "${folder}"
+                                find_slurm_and_job
+                                #if [[ -n "${slurm_file}" ]] ; then conditional_run ; else printf "No slurm file found in $(basename ${folder})\n" ; fi
+                                conditional_run
+				cd ../
+                        else
+                            	printf "Skipping slurm folder $(basename ${folder})\n"
+                        fi
+                done < <(printf '%s\n' "${folder_list}")
+        else
+            	printf "No slurm file or folders found"
+        fi
+}
+
+find_slurm_and_job
+
+#echo "${slurm_file}"
+#echo "${current_job_file}"
+
+conditional_run
