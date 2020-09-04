@@ -4,8 +4,3 @@ exclude_list_log
 queue_capacity
 __pycache__
 vtstscripts-964
-.idea/$CACHE_FILE$
-.idea/workspace.xml
-.idea/inspectionProfiles/*
-.idea/sonarlint
-.DS_Store
