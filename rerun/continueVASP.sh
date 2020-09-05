@@ -13,11 +13,11 @@ check_if_ran_out() {
 	ionic_steps=$(grep 'NSW' INCAR)
 	ionic_steps="${ionic_steps#'NSW = '}"
 	# search slurm for line with step value equal to NSW
-	if "${is_aimd}" ; then
-		max_step_line=""	
-	else
+#	if "${is_aimd}" ; then
+#		max_step_line=""
+#	else
 		max_step_line=$(grep "${ionic_steps} F=" "${slurm_file}" 2> /dev/null || :)
-	fi
+#	fi
 	}
 
 check_if_got_stuck() { # check slurm for error indicating it got stuck in a local minimum
@@ -51,7 +51,7 @@ save_run_in_directory() {
 	printf "Creating directory ... " >&3
 	for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40; do
 		# If 5run already exists, send an email and exit
-		if ! "${is_neb}" ; then
+		if ! "${is_neb}" && ! "${is_aimd}"; then
 			if [[ "${i}" == 6 ]] ; then 
 				printf "%s\n" "6 runs completed, no more runs will be attempted for job in $(pwd)"
 				job_name=$(grep '#SBATCH -J' runVASP.sh)
@@ -94,12 +94,17 @@ move_and_clean_up_files() {
 
 	# If path does not contain "NEB" and "actual", move CONTCAR to POSCAR. Otherwise, cycle through folders, moving CONTCAR to POSCAR if CONTCAR exists. You must use a folder with "actual" in the name to run your NEB calculations (the real NEB calculations, not the relaxations to get the start and end points; this is set up to still allow you to use rerunVASP for the relaxation part of NEB)
 	if ! "${is_neb}" ; then
-		source read_ions_from_POSCAR.sh
-		cp CONTCAR CONTCAR.bk
-		if ! "${is_empty}" ; then
-			label_ions.sh 8 "${ion_element}" CONTCAR
+		if "${is_auto}" ; then
+			source read_ions_from_POSCAR.sh # This has the potential to cause problems. If ions are not labeled in original POSCAR, the script will break.
+			cp CONTCAR CONTCAR.bk
+			if ! "${is_empty}" ; then
+				label_ions.sh 8 "${ion_element}" CONTCAR
+			fi
 		fi
 		mv CONTCAR POSCAR
+		if "${is_adding_electron}" ; then
+			add_electron
+		fi
 	else
 		while IFS="" read -r folder || [ -n "${folder}" ] ; do
 			folder_name="$(basename "${folder}")"
@@ -118,6 +123,12 @@ move_and_clean_up_files() {
 			fi
 		done < <(printf '%s\n' "${folder_list}")
 	fi
+}
+
+add_electron() {
+	nelect_value="$(grep 'NELECT' INCAR)"; nelect_value="${nelect_value#'NELECT[space]*=[space]*'}"; echo "${nelect_value}"
+	nelect_value=$(( nelect_value + 1 ))
+	sed -i "s/NELECT =.*$/NELECT = ${nelect_value}/" INCAR
 }
 
 check_if_ran_out

@@ -14,6 +14,8 @@ set -o nounset
 
 source verbose_mode.sh # adds option for verbose mode using -v or other option
 is_aimd=false
+is_auto=false
+is_adding_electron=false
 suppress_individual_emails=false
 crontab_options=
 if [[ -z "${is_neb+x}" ]] ; then
@@ -23,12 +25,17 @@ if [[ -n "${1+x}" ]] ; then
 	while :; do
 		case ${1-default} in
 			(-a|--auto)
+				is_auto=true
 				suppress_individual_emails=true
 				crontab_options="${crontab_options}--auto "
 				;;
 			(--AIMD)
 				is_aimd=true
 				crontab_options="${crontab_options}--AIMD "
+				;;
+			(-e) # For adding an electron when continuing an AIMD run; must also use --AIMD
+				is_adding_electron=true
+				crontab_options="${crontab_options}-e "
 				;;
 			(--) # End of all options.
 				shift
@@ -142,7 +149,11 @@ update_and_run_if_error() {
 		source continueVASP.sh
 		printf "Checking if ran out of steps or got stuck ... "
 		if [[ -n "${max_step_line}" ]] ; then # Check if ran out of steps. Gets steps from NSW in INCAR
-			printf "ran out of steps\n"
+			if "${is_aimd}" ; then
+				printf "finished AIMD trajectory\n"
+			else
+				printf "ran out of steps\n"
+			fi
 			move_and_clean_up_files
 			# if [[ -n $(find . -maxdepth 1 -mindepth 1 -type d -name "5run*") ]] ; then
 			# 	return # Exit function if already completed 5 runs
