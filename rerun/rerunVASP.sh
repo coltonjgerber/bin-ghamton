@@ -4,6 +4,7 @@
 
 set -o errexit
 set -o pipefail
+set -o nounset
 
 # End Boilerplate
 
@@ -29,9 +30,12 @@ set -o pipefail
 # 	 shift
 # done
 
-is_neb=false
 source rerun_functions.sh # make functions (stored in another file) available for use
 
-find_slurm_and_job # finds slurm-xxxxxxxx.out and current_job files, for use in checking if job is running, encountered an error, got stuck or ran out of steps.
+find_slurm_and_job # finds slurm-xxxxxxxx.out and current_job files, for use in checking if job is running, encountered
+# an error, got stuck or ran out of steps.
 find_folder_list # Finds list of folders not containing "slurm" or "run", if any
-conditional_run # If running, do nothing. If done, check for an error or see if it got stuck. If no current_job file found, check if slurm file found. If slurm found, check if error or got stuck. If no slurm found, check for input files. If input files found, submit calculation. If no input files found, check folders (if "slurm" or "run" not in folder title)
+conditional_run # If running, do nothing. If done, check for an error or see if it got stuck. If no current_job file
+# found, check if slurm file found. If slurm found, check if error or got stuck. If no slurm found, check for input
+# files. If input files found, submit calculation. If no input files found, check folders (if "slurm" or "run" not in
+# folder title)
