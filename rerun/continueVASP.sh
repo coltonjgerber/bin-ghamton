@@ -31,15 +31,6 @@ check_if_timeout() {
 	timeout_line=$(grep 'DUE TO TIME LIMIT' "${slurm_file}" 2> /dev/null || :)
 }
 
-check_if_NEB() {
-	# Wildcards in below conditional must be outside quotes. The conditional appears to use regex, not globbing
-	if { [[ "$(pwd)" == *"NEB"* ]] && [[ "$(pwd)" == *"actual"* ]]; } ; then
-		is_neb=true
-	else
-		is_neb=false
-	fi
-}
-
 copy_all_except_previous_runs() {
 	shopt -s extglob
 	eval 'cp -r !(+([0-9])run*|failed_slurms) "${1}"'
@@ -134,4 +125,3 @@ add_electron() {
 check_if_ran_out
 check_if_got_stuck
 check_if_timeout
-check_if_NEB
