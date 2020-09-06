@@ -8,11 +8,6 @@ set -o nounset
 
 # End Boilerplate
 
-# TODO:
-# Have continueVASP work with run folders 2 digits or more?
-# Automate runVASP naming, maybe using folder name at end (prep base name)
-# Automate removing entries from POSCAR easier
-
 source rerun_functions.sh # make functions shared with rerunNEB available for use
 
 # Submit job and catch output to grab job number, then send output to stdout
