@@ -373,16 +373,14 @@ check_if_ran_out() {
 	ionic_steps=$(grep 'NSW' INCAR)
 	ionic_steps="${ionic_steps#'NSW = '}"
 	max_step_line=$(grep "${ionic_steps} F=" "${slurm_file}" 2>/dev/null || :)
-	if [[ $(
-				grep -q 'reached required accuracy - stopping structural energy minimisation' "${slurm_file}" \
-					2>/dev/null
-				echo $?
-			) == 0 ]]; then
-	if [[ -n "${max_step_line}" ]]; then
-		if "${is_aimd}"; then
-			calculation_result="finished AIMD trajectory"
-		else
-			calculation_result="ran out of steps"
+	if [[ $(grep -q 'reached required accuracy - stopping structural energy minimisation' "${slurm_file}" 2>/dev/null; \
+	echo $?) == 0 ]]; then
+		if [[ -n "${max_step_line}" ]]; then
+			if "${is_aimd}"; then
+				calculation_result="finished AIMD trajectory"
+			else
+				calculation_result="ran out of steps"
+			fi
 		fi
 	fi
 }
