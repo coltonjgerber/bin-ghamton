@@ -13,6 +13,7 @@ set -o nounset
 # Automate runVASP naming, maybe using folder name at end (prep base name)
 
 source verbose_mode.sh # adds option for verbose mode using -v or other option
+continue_aimd=false
 is_aimd=false
 is_auto=false
 is_adding_electron=false
@@ -32,6 +33,10 @@ if [[ -n "${1+x}" ]]; then
 		--AIMD)
 			is_aimd=true
 			crontab_options="${crontab_options}--AIMD "
+			;;
+		-c|--continue)
+			continue_aimd=true
+			crontab_options="${crontab_options}-c "
 			;;
 		-e) # For adding an electron when continuing an AIMD run; must also use --AIMD
 			is_adding_electron=true
@@ -172,25 +177,13 @@ update_and_run_if_error() {
 		check_if_got_stuck
 		check_if_timeout
 		printf "Checking if ran out of steps or got stuck ... "
-		if [[ -n "${max_step_line}" ]]; then # Check if ran out of steps. Gets steps from NSW in INCAR
-			if "${is_aimd}"; then
-				printf "finished AIMD trajectory\n"
-			else
-				printf "ran out of steps\n"
-			fi
+		if [[ -n "${max_step_line}" ]] && ! { "${is_aimd}" && ! "${continue_aimd}"; }; then
 			move_and_clean_up_files
-			# if [[ -n $(find . -maxdepth 1 -mindepth 1 -type d -name "5run*") ]] ; then
-			# 	return # Exit function if already completed 5 runs
-			# fi
 			printf "%s\n" "Continuing job that ran out of steps in $(pwd)"
 			run_and_catch_job
 			add_to_crontab
-		elif [[ -n "${stuck_line}" ]]; then # Check if error from getting stuck in local minimum is in slurm
+		elif [[ -n "${stuck_line}" ]]; then
 			printf "got stuck\n"
-			move_and_clean_up_files
-			# if [[ -n $(find . -maxdepth 1 -mindepth 1 -type d -name "5run*") ]] ; then
-			# 	return
-			# fi
 			printf "%s\n" "Continuing job that got stuck in $(pwd)"
 			run_and_catch_job
 			add_to_crontab
@@ -201,7 +194,7 @@ update_and_run_if_error() {
 			run_and_catch_job
 			add_to_crontab
 		else # Remove line from crontab file
-			printf "did not run out of steps or get stuck\n"
+			printf "did not run out of steps, get stuck, or time out\n"
 			printf "%s\n" "Job assumed completed in $(pwd)"
 			job_name=$(grep '#SBATCH -J' runVASP.sh)
 			if ! "${suppress_individual_emails}"; then
@@ -380,6 +373,18 @@ check_if_ran_out() {
 	ionic_steps=$(grep 'NSW' INCAR)
 	ionic_steps="${ionic_steps#'NSW = '}"
 	max_step_line=$(grep "${ionic_steps} F=" "${slurm_file}" 2>/dev/null || :)
+	if [[ $(
+				grep -q 'reached required accuracy - stopping structural energy minimisation' "${slurm_file}" \
+					2>/dev/null
+				echo $?
+			) == 0 ]]; then
+	if [[ -n "${max_step_line}" ]]; then
+		if "${is_aimd}"; then
+			calculation_result="finished AIMD trajectory"
+		else
+			calculation_result="ran out of steps"
+		fi
+	fi
 }
 
 # Check slurm for error indicating it got stuck in a local minimum
@@ -388,11 +393,16 @@ check_if_got_stuck() {
 		 please rerun with smaller EDIFF, or copy CONTCAR' "${slurm_file}" 2>/dev/null ||
 		grep 'ZBRENT: fatal error: bracketing interval incorrect
      please rerun with smaller EDIFF, or copy CONTCAR' "${slurm_file}" 2>/dev/null || :)
-
+	if [[ -n "${stuck_line}" ]]; then
+		calculation_result="got stuck"
+	fi
 }
 
 check_if_timeout() {
 	timeout_line=$(grep 'DUE TO TIME LIMIT' "${slurm_file}" 2>/dev/null || :)
+	if [[ -n "${timeout_line}" ]]; then
+		calculation_result="timed out"
+	fi
 }
 
 copy_all_except_previous_runs() {
