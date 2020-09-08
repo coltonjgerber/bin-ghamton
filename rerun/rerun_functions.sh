@@ -34,7 +34,7 @@ if [[ -n "${1+x}" ]]; then
 			is_aimd=true
 			crontab_options="${crontab_options}--AIMD "
 			;;
-		-c|--continue)
+		-c | --continue)
 			continue_aimd=true
 			crontab_options="${crontab_options}-c "
 			;;
@@ -177,20 +177,11 @@ update_and_run_if_error() {
 		check_if_got_stuck
 		check_if_timeout
 		printf "Checking if ran out of steps or got stuck ... "
-		if [[ -n "${max_step_line}" ]] && ! { "${is_aimd}" && ! "${continue_aimd}"; }; then
+		if { [[ -n "${max_step_line}" ]] && ! { "${is_aimd}" && ! "${continue_aimd}"; }; } ||
+			[[ -n "${stuck_line}" ]] || [[ -n "${timeout_line}" ]] ; then
+			printf "%s\n" "${calculation_result}"
 			move_and_clean_up_files
-			printf "%s\n" "Continuing job that ran out of steps in $(pwd)"
-			run_and_catch_job
-			add_to_crontab
-		elif [[ -n "${stuck_line}" ]]; then
-			printf "got stuck\n"
-			printf "%s\n" "Continuing job that got stuck in $(pwd)"
-			run_and_catch_job
-			add_to_crontab
-		elif [[ -n "${timeout_line}" ]]; then
-			printf "timed out\n"
-			move_and_clean_up_files
-			printf "%s\n" "Continuing job that timed out in $(pwd)"
+			printf "%s\n" "Continuing job that ${calculation_result} in $(pwd)"
 			run_and_catch_job
 			add_to_crontab
 		else # Remove line from crontab file
@@ -372,9 +363,12 @@ conditional_run() {
 check_if_ran_out() {
 	ionic_steps=$(grep 'NSW' INCAR)
 	ionic_steps="${ionic_steps#'NSW = '}"
-	max_step_line=$(grep "${ionic_steps} F=" "${slurm_file}" 2>/dev/null || :)
-	if [[ $(grep -q 'reached required accuracy - stopping structural energy minimisation' "${slurm_file}" 2>/dev/null; \
-	echo $?) == 0 ]]; then
+	if ! [[ $(
+		grep -q 'reached required accuracy - stopping structural energy minimisation' "${slurm_file}" \
+			2>/dev/null
+		echo $?
+	) == 0 ]]; then
+		max_step_line=$(grep "${ionic_steps} F=" "${slurm_file}" 2>/dev/null || :)
 		if [[ -n "${max_step_line}" ]]; then
 			if "${is_aimd}"; then
 				calculation_result="finished AIMD trajectory"
