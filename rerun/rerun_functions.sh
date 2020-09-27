@@ -376,6 +376,8 @@ check_if_ran_out() {
 				calculation_result="ran out of steps"
 			fi
 		fi
+	else
+		max_step_line=""
 	fi
 }
 
