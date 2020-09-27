@@ -1,6 +1,10 @@
 #!/bin/bash
 
 ion_element="${1}"
+if [[ -z "${ion_element}" ]] ; then
+	echo "No element provided"
+	exit 1
+fi
 
 if ! { [[ "$(pwd)" == *[0-9]_Ca* ]] || [[ "$(pwd)" == *[0-9]_Mg* ]] || [[ "$(pwd)" == *[0-9]_Zn* ]]; } ; then
 	next_ion_amt="$(basename "$(dirname "$(pwd)")")"
