@@ -59,12 +59,12 @@ else
 	mv "${lowest_ion}" "${lowest_ion}"_lowest
 	printf "Checking if cell already empty ... " >&3
 
-	if [[ "${num_ions}" == 0 ]] ; then
+	if [[ "${num_ions}" == 0 ]]; then
 		printf "already empty\n" >&3
-		if "${is_continuous}" ; then
+		if "${is_continuous}"; then
 			cd "${lowest_ion}"_lowest
-			for i in 1 2 3 4 5 6 7 8 9 10; do
-				if [[ -z $(find ../../../ -maxdepth 1 -mindepth 1 -type d -name "*${i}auto*") ]] ; then
+			for ((i = 1 ; i <= 1000 ; i++)); do
+				if [[ -z $(find ../../../ -maxdepth 1 -mindepth 1 -type d -name "*${i}auto*") ]]; then
 					new_auto_folder="${i}auto_dis"
 					mkdir "../../../${new_auto_folder}"
 					printf "%s\n" "Made new auto folder ${new_auto_folder}"
@@ -74,9 +74,9 @@ else
 					break
 				fi
 				printf "%s" "${i}auto already exists ... " >&3 # If a profile (e.g. 4auto) does not already exist, the loop should break before this command in the previous if statement
-				if [[ "${i}" == 10 ]] ; then
-					printf "10 half-cycles completed, stopping automatic cycling\n"
-					exit
+#				if [[ "${i}" == 10 ]]; then
+#					printf "10 half-cycles completed, stopping automatic cycling\n"
+#					exit
 				fi
 			done
 			cd ../../
