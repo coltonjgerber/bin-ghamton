@@ -1,32 +1,42 @@
 #!/bin/bash
 
-set -e 
+set -e
 
 source rerunVASP_functions.sh
 source verbose_mode.sh
 
 is_continuous=false
 while :; do
-	 case $1 in
-		(--cont|--continuous)
-			is_continuous=true
-			;;
-		(-v|--v|--ve|--ver|--verb|--verbo|--verbos|--verbose)
-			;; 
-		(--) # End of all options.
-			shift
-			break
-			;;
-		(-?*)
-			printf 'WARN: Unknown option (ignored): %s\n' "$1" >&2
-			;;
-		(*) # Default case: No more options, so break out of the loop.
-			break
-	 esac
-	 shift
+	case $1 in
+	--cont | --continuous)
+		is_continuous=true
+		;;
+	--plusU)
+		is_plus_u=true
+		;;
+	--prim | --primitive)
+		is_primitive=true
+		full_cell_num_ions=2
+		;;
+	--sd)
+		is_selective_dynamics=true
+		;;
+	-v | --v | --ve | --ver | --verb | --verbo | --verbos | --verbose) ;;
+
+	--) # End of all options.
+		shift
+		break
+		;;
+	-?*)
+		printf 'WARN: Unknown option (ignored): %s\n' "$1" >&2
+		;;
+	*) # Default case: No more options, so break out of the loop.
+		break ;;
+	esac
+	shift
 done
 
-# Positional parameters (arguments): 
+# Positional parameters (arguments):
 # $1 is the number of ions currently in the cell (0, if starting from the beginning). IF MORE THAN 8 IONS WILL EVENTUALLY BE INTERCALATED, CODE BELOW (size_array) WILL NEED TO BE CHANGED, AS WILL (MOST LIKELY) ewe.sh, remove_ions.sh, and label_ions.sh
 # $2 is the species/element of the intercalated ion (Ca, Mg, etc.)
 # $3 (not yet implemented) will be number of ions to put in at a time.
@@ -64,11 +74,11 @@ else
 	label_ions.sh 8 "${ion_element}" CONTCAR
 
 	printf "Checking if cell already full ... " >&3
-	if [[ "${num_ions}" == 8 ]] ; then
+	if [[ "${num_ions}" == 8 ]]; then
 		printf "already full\n" >&3
-		if "${is_continuous}" ; then
-			for i in 1 2 3 4 5 6 7 8 9 10; do
-				if [[ -z $(find ../../../ -maxdepth 1 -mindepth 1 -type d -name "*${i}auto*") ]] ; then
+		if "${is_continuous}"; then
+			for ((i = 1; i <= 1000; i++)); do
+				if [[ -z $(find ../../../ -maxdepth 1 -mindepth 1 -type d -name "*${i}auto*") ]]; then
 					new_auto_folder="${i}auto_chg"
 					mkdir "../../../${new_auto_folder}"
 					printf "%s\n" "Made new auto folder ${new_auto_folder}"
